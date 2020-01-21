@@ -1,112 +1,137 @@
-use bnf::*;
-use std::fmt;
+use std::iter::Peekable;
+use crate::tokenizer::{TokenType, Keyword, Value, Token};
 use std::slice::Iter;
-use crate::tokenizer::Token;
-use std::rc::Rc;
+use crate::data::{Program, Function, Variable, Statement, Expression};
 
-//        let right_hand_terms: Vec<&Term> = self.grammar
-//            .productions_iter()
-//            .flat_map(|prod| prod.rhs_iter())
-//            .flat_map(|expr| expr.terms_iter())
-//            .collect();
-type IterToken<'a> = Iter<'a, Token>;
-
-pub struct Parser<'a> {
-    iter: IterToken<'a>,
-    prod: ProdutionRule,
-    grammar: Grammar,
-    cur_token: Option<&'a Token>,
+pub struct Parse<'a> {
+    iter: Peekable<Iter<'a, Token>>
 }
 
-pub enum ProdutionRule {
-    Program,
-    Function,
-    Statement,
-    Exp,
+pub struct ParseError {
+    pub error: String,
+    pub position: usize,
+    pub line: usize,
 }
 
-impl Parser<'_> {
-    pub fn new(iter: IterToken) -> Result<Parser, Error> {
-        Ok(Parser {
-            prod: ProdutionRule::Program,
-            grammar: self::Parser::bnf()?,
-            iter: iter.clone(),
-            cur_token: None,
-        })
+impl ParseError {
+    pub fn new_with_token(error: String, token: &Token) -> ParseError {
+        ParseError { error, position: token.position, line: token.line }
     }
 
-    pub fn parse(&mut self) -> bool {
-        self.cur_token = self.iter.next();
-        self.parse_non_terminal(Term::Nonterminal("function".to_string()));
-        self.iter.next().is_none()
+    pub fn new_with_token_unref(error: String, token: Token) -> ParseError {
+        ParseError { error, position: token.position, line: token.line }
     }
 
-    fn parse_non_terminal(&mut self, init_term: Term) {
-        let vec_expr = self.get_rhs(&init_term);
-        let mut b = false;
-        for expr in vec_expr {
-//            println!("Find Expr {:?}", expr);
-            for term in expr.terms_iter() {
-//                println!("Find Term {:?}", term);
-                let e = match term {
-                    Term::Terminal(_) => b = self.parse_terminal(term.clone()),
-                    Term::Nonterminal(_) => {
-                        self.parse_non_terminal(term.clone());
-                    }
+    pub fn new(error: String, position: usize, line: usize) -> ParseError {
+        ParseError { error, position, line }
+    }
+}
+
+impl Parse<'_> {
+    pub fn new(tokens: &Vec<Token>) -> Parse {
+        Parse {
+            iter: tokens.into_iter().peekable()
+        }
+    }
+
+    fn next_is(&mut self, token: TokenType) -> Result<bool, ParseError> {
+        if let Some(peek) = self.iter.peek() {
+            if peek.token == token {
+                Ok(true)
+            } else {
+                Err(ParseError::new_with_token(format!("_!_ bad token match {:?} and shall be {:?}", peek.token, token), &peek))
+            }
+        } else {
+            Err(ParseError::new(format!("miss token {:?}", token), 0, 0))
+        }
+    }
+
+    fn next_token(&mut self) -> Result<Token, ParseError> {
+        if let Some(e) = self.iter.next() {
+            Ok(e.clone())
+        } else {
+            Err(ParseError::new(format!("Missing Token"), 0, 0))
+        }
+    }
+
+    fn match_keyword(&mut self, keyword: Keyword) -> Result<(), ParseError> {
+        let token = self.next_token()?;
+        match token.token {
+            TokenType::Keyword(k) if k == keyword => Ok(()),
+            token_type => Err(ParseError::new(format!("_!_ bad token match {:?} and shall be {:?}", token_type, keyword), token.position, token.line))
+        }
+    }
+
+    fn match_identifier(&mut self) -> Result<String, ParseError> {
+        let token = self.next_token()?;
+        match token.token {
+            TokenType::Identifier(s) => Ok(s),
+            token_type => Err(ParseError::new(format!("_!_ bad token match {:?} and shall be an identifier", token_type), token.position, token.line))
+        }
+    }
+
+    fn match_token(&mut self, token_match: TokenType) -> Result<TokenType, ParseError> {
+        let token = self.next_token()?;
+        match token.token {
+            tok if tok == token_match => Ok(tok),
+            token_type => Err(ParseError::new(format!("_!_ bad token match {:?} and shall be {:?}", token_type, token_match), token.position, token.line))
+        }
+    }
+}
+
+
+impl Parse<'_> {
+    pub fn parse(&mut self) -> Result<Program, ParseError> {
+        let mut functions: Vec<Function> = vec![];
+        let globals: Vec<Variable> = vec![];
+
+        while self.next_is(TokenType::Keyword(Keyword::Int))? {
+            functions.push(self.parse_function()?);
+        }
+
+
+        Ok(Program { functions, globals })
+    }
+
+    fn parse_function(&mut self) -> Result<Function, ParseError> {
+        self.match_token(TokenType::Keyword(Keyword::Int));
+        let name = self.match_identifier()?;
+        self.match_token(TokenType::OpenParentheses)?;
+
+        let variables: Vec<Variable> = vec![];
+
+        self.match_token(TokenType::CloseParentheses)?;
+        self.match_token(TokenType::OpenBrace)?;
+
+        let mut statements: Vec<Statement> = vec![];
+
+        while self.next_is(TokenType::CloseBrace).is_err() {
+            statements.push(self.parse_statement()?);
+        }
+        self.match_token(TokenType::CloseBrace)?;
+
+        Ok(Function { name, variables, statements })
+    }
+
+    fn parse_statement(&mut self) -> Result<Statement, ParseError> {
+        let token = self.next_token()?;
+        match token.token {
+            TokenType::Keyword(Keyword::Return) => {
+                let token = self.next_token()?;
+                let expression = match token.token {
+                    TokenType::Literal(Value::Int(nu)) => Some(Expression::Int(nu)),
+                    TokenType::Literal(Value::Char(c)) => Some(Expression::Char(c)),
+                    _ => { None }
                 };
+                self.match_token(TokenType::Semicolon)?;
+                if let Some(expr) = expression {
+                    Ok(Statement::Return(expr))
+                } else { Err(ParseError::new_with_token(format!("_!_ a token shall be a expression"), &token)) }
             }
-            if b { break; } else { return;}
-        }
-    }
-
-    fn parse_terminal(&mut self, term: Term) -> bool {
-        if let Term::Terminal(s) = term {
-//            println!("Current Token : {:?}", self.iter);
-            if s == self.cur_token.unwrap().to_string() {
-                self.cur_token = self.iter.next();
-//                println!("__!__ Match Token && Term {:?}\n", self.cur_token);
-                return true;
+            invalid_token => {
+                Err(ParseError::new(format!("_!_ a token is out of place {:?} ", invalid_token), token.position, token.line))
             }
         }
-        false
-    }
-    fn get_rhs(&mut self, term: &Term) -> Vec<Expression> {
-        self.grammar
-            .productions_iter_mut()
-            .filter(|p| &p.lhs == term)
-            .flat_map(|prod| prod.rhs_iter())
-            .cloned()
-            .collect()
-    }
-    fn bnf() -> Result<Grammar, Error> {
-        let input = "
-    <program> ::= <function>
-    <function> ::= \"int\" \"identifier\" \"OpenParentheses\" \"CloseParentheses\" \"OpenBrace\" <statement> \"CloseBrace\"
-    <statement> ::= \"return\" <exp> \"Semicolon\"
-    <exp> ::= \"Constant\" | \"identifier\"";
-        input.parse()
-//    let grammar: Result<Grammar, _> = ;
-//    match grammar {
-//        Ok(g) => {
-//            println!("grammar {:#?}", g);
-//            for p in g.productions_iter() {
-//                println!("p.iter {:?}", p.lhs);
-//            }
-//
-//            let left_hand_terms: Vec<&Term> = g
-//                .productions_iter()
-//                .map(|ref prod| &prod.lhs)
-//                .collect();
-//            println!("left_hand_terms{:#?}", left_hand_terms);
-//            let right_hand_terms: Vec<&Term> = g
-//                .productions_iter()
-//                .flat_map(|prod| prod.rhs_iter())
-//                .flat_map(|expr| expr.terms_iter())
-//                .collect();
-//            println!("right_hand_terms{:#?}", right_hand_terms);
-//        }
-//        Err(e) => println!("Failed to make grammar from String: {}", e),collect
     }
 }
-
 

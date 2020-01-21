@@ -2,16 +2,36 @@ use std::rc::Rc;
 use std::fs::File;
 use std::io::Read;
 use crate::lexer::KeywordMap;
-use std::str::FromStr;
-use std::fmt::{Display, Formatter, Error};
 
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Token {
+pub struct Token {
+    pub line: usize,
+    pub position: usize,
+    pub token: TokenType
+}
+
+impl Token {
+    pub fn new(token: TokenType, position: usize, line: usize) -> Token {
+        Token { line, position, token }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Value {
+    Int(i32),
+    Char(u8),
+}
+
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TokenType {
     Keyword(Keyword),
     Identifier(String),
-    Constant(String),
+    Literal(Value),
     OpenParentheses,
     CloseParentheses,
     OpenBrace,
@@ -20,31 +40,10 @@ pub enum Token {
     Whitespace,
 }
 
-impl ToString for Token {
-    fn to_string(&self) -> String {
-        match self {
-            Token::Keyword(Keyword::Data(Type::Int)) => String::from("int"),
-            Token::Identifier(_) => { String::from("identifier") }
-            Token::OpenParentheses => String::from("OpenParentheses"),
-            Token::CloseParentheses => String::from("CloseParentheses"),
-            Token::OpenBrace => String::from("OpenBrace"),
-            Token::CloseBrace => String::from("CloseBrace"),
-            Token::Semicolon => String::from("Semicolon"),
-            Token::Keyword(Keyword::Return) => String::from("return"),
-            Token::Constant(_) => String::from("Constant"),
-            _ => String::from(";"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Copy, Hash, Eq)]
 pub enum Keyword {
-    Data(Type),
     Return,
-}
-
-#[derive(Debug, Clone, PartialEq, Copy, Hash, Eq)]
-pub enum Type {
     Int,
 }
 
@@ -60,27 +59,41 @@ pub enum CharacterType {
 #[warn(dead_code)]
 #[derive(Debug)]
 pub struct Tokenizer {
-    ptr: Rc<Vec<char>>,
+    ptr: Vec<char>,
+    pub file : String,
     position: usize,
+    line: usize,
     pub tokens: Vec<Token>,
 }
 
+
 impl Tokenizer {
     pub fn new(filename: Rc<String>) -> Self {
+        let file = Self::read_file(filename);
         Tokenizer {
-            ptr: Self::read_file(filename),
+            ptr: file.chars().collect(),
+            file,
             position: 0,
+            line: 0,
             tokens: vec![],
         }
     }
 
-    fn read_file(filename: Rc<String>) -> Rc<Vec<char>> {
+    fn read_file(filename: Rc<String>) -> String {
         let mut s = String::new();
         let mut file = File::open(filename.as_str()).expect("File not found");
         file.read_to_string(&mut s).expect("Error reading file");
-//        println!("File:\n`{}`\n", s);
-        Rc::new(s.chars().collect())
+
+        s
     }
+
+    fn add_token(&mut self, token : TokenType) {
+        self.tokens.push(Token::new(token, self.position, self.line));
+    }
+}
+
+impl Tokenizer {
+
 
     fn get_char_type(&self, advance_from_pos: usize) -> Option<CharacterType> {
         self.ptr.get(self.position + advance_from_pos).map(|c| {
@@ -88,9 +101,9 @@ impl Tokenizer {
                 CharacterType::Alphabetic
             } else if c.is_ascii_digit() {
                 CharacterType::Numeric
-            } else if c == &' ' {
+            } else if c == &' ' || c == &'\t' {
                 CharacterType::Whitespace
-            } else if c == &'\n' {
+            } else if c == &'\n' || c == &'\r' {
                 CharacterType::NewLine
             } else {
                 CharacterType::NonAlphabetic(*c)
@@ -103,18 +116,22 @@ impl Tokenizer {
             match ch {
                 CharacterType::Whitespace => self.position += 1,
                 CharacterType::Alphabetic => self.get_identifier(keyword_map),
-                CharacterType::Numeric => self.get_constant(),
-                CharacterType::NewLine => self.position += 1,
-                CharacterType::NonAlphabetic(c) => {
+                CharacterType::Numeric => self.get_literal(),
+                CharacterType::NewLine => {
                     self.position += 1;
+                    self.line += 1;
+
+                },
+                CharacterType::NonAlphabetic(c) => {
                     match c {
-                        '(' => { self.tokens.push(Token::OpenParentheses) }
-                        ')' => { self.tokens.push(Token::CloseParentheses) }
-                        '{' => { self.tokens.push(Token::OpenBrace) }
-                        '}' => { self.tokens.push(Token::CloseBrace) }
-                        ';' => { self.tokens.push(Token::Semicolon) }
+                        '(' => { self.add_token(TokenType::OpenParentheses) }
+                        ')' => { self.add_token(TokenType::CloseParentheses) }
+                        '{' => { self.add_token(TokenType::OpenBrace) }
+                        '}' => { self.add_token(TokenType::CloseBrace) }
+                        ';' => { self.add_token(TokenType::Semicolon) }
                         _ => {}
                     }
+                    self.position += 1;
                 }
             }
         }
@@ -131,14 +148,14 @@ impl Tokenizer {
         }
         let value: String = self.ptr[self.position..self.position + len].iter().collect();
         if let Some(keyword) = keyword_map.get(value.as_str()) {
-            self.tokens.push(Token::Keyword(*keyword))
+            self.add_token(TokenType::Keyword(*keyword))
         } else {
-            self.tokens.push(Token::Identifier(value.into()))
+            self.add_token(TokenType::Identifier(value.into()))
         }
         self.position += len;
     }
 
-    fn get_constant(&mut self) {
+    fn get_literal(&mut self) {
         let mut len = 1;
         while let Some(c) = self.ptr.get(self.position + len) {
             if c.is_ascii_digit() {
@@ -148,7 +165,7 @@ impl Tokenizer {
             break;
         }
         let value: String = self.ptr[self.position..self.position + len].iter().collect();
-        self.tokens.push(Token::Constant(value.into()));
+        self.add_token(TokenType::Literal(Value::Int(value.parse().expect("Error parsing literal value"))));
         self.position += len;
     }
 }

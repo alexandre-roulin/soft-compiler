@@ -1,27 +1,44 @@
-//use crate::lexer::Lexer;
+mod tokenizer;
+mod lexer;
+mod data;
+mod parser;
 
 use std::env::args;
 use std::rc::Rc;
-use crate::parser::Parser;
-use bnf::Grammar;
+use parser::Parse;
+use crate::assembly::Generator;
+use std::fs::File;
+use std::io::Write;
+use crate::data::Program;
+use crate::parser::ParseError;
 
-mod tokenizer;
-mod lexer;
-mod parser;
-
-
+mod assembly;
 
 fn main() {
-
     let argc: Vec<String> = args().collect();
     if argc.len() > 1 {
-        for i in 1..argc.len() {
-            let mut tokenizer = tokenizer::Tokenizer::new(Rc::new(argc[i].clone()));
+        for index in 1..argc.len() {
+            let mut tokenizer = tokenizer::Tokenizer::new(Rc::new(argc[index].clone()));
+//            println!("Tokenizer");
             tokenizer.tokenize(&lexer::Lexer::keyword_map());
-            println!("Token recognize : {:?}", tokenizer.tokens);
-            let mut parser = Parser::new(tokenizer.tokens.iter()).expect("Error bnf");
-            println!("File is well formatted [{}]", parser.parse());
+            let mut parser = Parse::new(&tokenizer.tokens);
+//            println!("Parser");
+            match parser.parse() {
+                Ok(program) => {
+                    let generator = Generator::new();
+//                    println!("Generator");
+                    let asm_generate = generator.generate(&program);
+                    let asm_file = argc[index].replace(".c", ".s");
+                    let mut f = File::create(asm_file).expect("error create file");
+                    f.write(asm_generate.as_bytes());
+                },
+                Err(error) => {
+                    let array: Vec<String> = tokenizer.file.split('\n').map(|s| s.to_string()).collect();
+
+                    println!("[ERROR] in `{}` :\t{} : L:{}:{} {}", argc[index], error.error, error.line, error.position, array[error.line]);
+                },
+            };
+
         }
     }
-
 }

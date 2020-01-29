@@ -101,7 +101,7 @@ impl Generator {
 			BiOp::Addition => { asm.push_str("\tadd rax, rcx"); }
 			BiOp::Multiplication => { asm.push_str("\timul rax, rcx"); }
 			BiOp::Division => {
-				asm.push_str("\txor rdx, rdx");
+				asm.push_str("\tmov rdx, 0");
 				asm.push_str("\tidiv rcx");
 			}
 			BiOp::Minus => { asm.push_str("	sub rax, rcx") }

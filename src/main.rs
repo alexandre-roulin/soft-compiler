@@ -16,11 +16,13 @@ fn main()  {
     let argc: Vec<String> = args().collect();
     if argc.len() > 1 {
         for index in 1..argc.len() {
+            println!("File{}", argc[index]);
+
             let mut tokenizer = tokenizer::Tokenizer::new(Rc::new(argc[index].clone()));
             println!("Tokenizer");
             tokenizer.tokenize(&lexer::Lexer::keyword_map());
-            let mut parser = Parse::new(&tokenizer.tokens);
             println!("Parser : {:?}", tokenizer.tokens);
+            let mut parser = Parse::new(tokenizer.tokens);
             match parser.parse() {
                 Ok(program) => {
                     let generator = Generator::new();

@@ -1,3 +1,5 @@
+use crate::tokenizer::{Token, TokenType};
+
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum Size {
@@ -41,19 +43,43 @@ pub enum UnOp {
 	LogicalNegation,
 }
 
+impl From<TokenType> for UnOp {
+	fn from(token: TokenType) -> Self {
+		match token {
+			TokenType::Minus => UnOp::Negation,
+			TokenType::Bitwise => UnOp::Bitwise,
+			TokenType::LogicalNegation => UnOp::LogicalNegation,
+			_ => panic!("critical error")
+		}
+	}
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Eq, PartialEq)]
 pub enum BiOp {
 	Minus,
 	Addition,
 	Multiplication,
-	Division
+	Division,
 }
+
+impl From<TokenType> for BiOp {
+	fn from(token: TokenType) -> Self {
+		match token {
+			TokenType::Minus => BiOp::Minus,
+			TokenType::Addition => BiOp::Addition,
+			TokenType::Multiplication => BiOp::Multiplication,
+			TokenType::Division => BiOp::Division,
+			_ => panic!("critical error")
+		}
+	}
+}
+
 
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum Expression {
 	Int(i32),
 	UnaryOperator(UnOp, Box<Expression>),
-	BinaryOperator(Box<Expression>, BiOp, Box<Expression>)
+	BinaryOperator(Box<Expression>, BiOp, Box<Expression>),
 }

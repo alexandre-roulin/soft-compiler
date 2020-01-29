@@ -4,5 +4,5 @@ Cargo.lock
 .idea/
 return_2.c
 return_2.s
-write_a_c_compiler/
+write_a_c_compiler/**/*
 a.out

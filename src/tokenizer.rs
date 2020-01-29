@@ -54,39 +54,6 @@ pub enum TokenType {
 	Division					// /
 }
 
-impl TokenType {
-	#[allow(dead_code)]
-	pub fn to_unary_operator(&self) -> UnOp {
-		match self {
-			TokenType::Minus => UnOp::Negation,
-			TokenType::Bitwise => UnOp::Bitwise,
-			TokenType::LogicalNegation => UnOp::LogicalNegation,
-			_ => panic!("critical error")
-		}
-	}
-
-	#[allow(dead_code)]
-	pub fn to_binary_operator(&self) -> BiOp {
-		match self {
-			TokenType::Minus => BiOp::Minus,
-			TokenType::Addition => BiOp::Addition,
-			TokenType::Multiplication => BiOp::Multiplication,
-			TokenType::Division => BiOp::Division,
-			_ => panic!("critical error")
-		}
-	}
-
-	#[allow(dead_code)]
-	pub fn is_unary_operator(&self) -> bool {
-		*self == TokenType::Minus || *self == TokenType::Bitwise || *self == TokenType::LogicalNegation
-	}
-
-	#[allow(dead_code)]
-	pub fn is_binary_operator(&self) -> bool {
-		*self == TokenType::Minus || *self == TokenType::Addition || *self == TokenType::Multiplication || *self == TokenType::Division
-	}
-}
-
 #[derive(Debug, Clone, PartialEq, Copy, Hash, Eq)]
 pub enum Keyword {
 	Return,
